@@ -182,7 +182,7 @@ def recommend(emotion_input1: str, emotion_input2: str, weather_input: str):
     return JSONResponse(content={"stores": sorted_stores})
 
 
-@app.get("/similarity-map")
+@app.get("/question/similarity-map")
 def create_map():
     conn = getConn()
     #todo 감정과 값 업데이트
