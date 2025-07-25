@@ -5,19 +5,28 @@ import os
 import cx_Oracle
 import torch
 import time
+import redis
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sentence_transformers import SentenceTransformer, util
 
+
+from saveToRedis import save_similarity_to_redis
+from queryEmotion import fetch_emotion_data, fetch_question_data
+from calculateSimilarity import calculate_similarity_map
+
 # 앱 시작 시 모델 로딩
 app = FastAPI()
 model = None
-
+r = None
 @app.on_event("startup")
 def load_model():
     global model
+    global r
     model = SentenceTransformer('jhgan/ko-sroberta-multitask')  # model time: 약 3.6
+        # Redis 설정
+    r = redis.Redis(host='34.64.210.133', port=6379, decode_responses=True)
 
 # 1. Oracle Instant Client 초기화
 lib_dir = os.path.join(os.path.dirname(__file__), os.getenv("INSTANT_CLIENT_DIR"))
@@ -30,6 +39,10 @@ ORACLE_HOST = os.getenv("ORACLE_HOST")
 ORACLE_PORT = os.getenv("ORACLE_PORT")
 ORACLE_SERVICE_NAME = os.getenv("ORACLE_SERVICE_NAME")
 DSN = cx_Oracle.makedsn(ORACLE_HOST, ORACLE_PORT, service_name=ORACLE_SERVICE_NAME)
+
+def getConn():
+    conn = cx_Oracle.connect(user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=DSN)
+    return conn
 
 # 3. 매장 데이터 조회
 def fetch_store_data():
@@ -167,3 +180,22 @@ def recommend(emotion_input1: str, emotion_input2: str, weather_input: str):
     print(f"걸린 시간: {end_time - start_time:.2f}초")
 
     return JSONResponse(content={"stores": sorted_stores})
+
+
+@app.get("/question/similarity-map")
+def create_map():
+    conn = getConn()
+    #todo 감정과 값 업데이트
+
+    emotion_data,emotions = fetch_emotion_data(conn)
+    question_data = fetch_question_data(conn)
+    
+    print(emotion_data)
+    print(question_data)
+
+    similarity_map = calculate_similarity_map(emotions,emotion_data,question_data,model)
+    
+    save_similarity_to_redis(similarity_map,r)
+    
+    conn.close()
+    return {"message": "✅ Redis 저장 완료"}
