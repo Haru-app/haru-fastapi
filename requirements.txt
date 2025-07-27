@@ -1,6 +1,7 @@
-cx_Oracle==8.3.0
+oracledb==1.4.2
 sentence-transformers==2.7.0
 torch==2.6.0
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
 redis
+python-dotenv
