@@ -34,6 +34,17 @@ jobs:
         with:
           service_account_key: ${{ secrets.GCP_KEY }}
           project_id: ${{ secrets.GCP_ID }}
+          export_default_credentials: true
+
+      - name: Activate service account
+        run: |
+          echo '${{ secrets.GCP_KEY }}' > key.json
+          gcloud auth activate-service-account ${{ secrets.GCP_EMAIL }} --key-file=key.json
+
+      - name: Set active account
+        run: |
+          gcloud config set account ${{ secrets.GCP_EMAIL }}
+
 
       - name: Upload .env file to VM (if needed)
         run: |
