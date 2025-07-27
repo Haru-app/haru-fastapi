@@ -6,6 +6,7 @@ import cx_Oracle
 import torch
 import time
 import redis
+import random
 
 from typing import Optional
 from fastapi import FastAPI, Query
@@ -124,25 +125,30 @@ def recommend(
     cafe_indices = [i for i, s in enumerate(stores) if s['category'] in cafe_categories]
     non_food_indices = [i for i in range(len(stores)) if i not in food_indices]
 
-    # 음식점 중 유사도 가장 높은 1개
+    # 음식점 중 유사도 Top 3 중 랜덤 1개
     food_scores = [(i, float(cosine_scores[0][i])) for i in food_indices]
     food_scores.sort(key=lambda x: x[1], reverse=True)
-    top_food = food_scores[:1]
+    top_food_candidates = food_scores[:3]
+    top_food = [random.choice(top_food_candidates)] if top_food_candidates else []
 
-    # 카페/베이커리 중 유사도 가장 높은 1개
+    # 카페/베이커리 중 유사도 Top 3 중 랜덤 1개
     cafe_scores = [(i, float(cosine_scores[0][i])) for i in cafe_indices]
     cafe_scores.sort(key=lambda x: x[1], reverse=True)
-    top_cafe = cafe_scores[:1]
+    top_cafe_candidates = cafe_scores[:3]
+    top_cafe = [random.choice(top_cafe_candidates)] if top_cafe_candidates else []
 
-    # 비음식점 중 카테고리별 2개 이하, 총 4개 선택
+    # 비음식점 유사도 Top 15 중 랜덤 4개 (카테고리당 최대 2개 제한)
     non_food_scores = [(i, float(cosine_scores[0][i])) for i in non_food_indices]
     non_food_scores.sort(key=lambda x: x[1], reverse=True)
+    top_non_food_candidates = non_food_scores[:15]
+    random.shuffle(top_non_food_candidates)
+
     top_non_food = []
     category_counts = {}
     max_per_category = 2
     max_total = 4
 
-    for idx, score in non_food_scores:
+    for idx, score in top_non_food_candidates:
         category = stores[idx]['category']
         if category_counts.get(category, 0) < max_per_category:
             top_non_food.append((idx, score))
