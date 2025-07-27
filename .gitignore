@@ -27,3 +27,5 @@ instantclient*/
 *.swo
 .vscode/
 .idea/
+
+*.zip
