@@ -3,7 +3,7 @@ name: CI/CD - Python FastAPI Docker & Deploy
 on:
   push:
     branches:
-      - deploy-python
+      - deploy
 
 jobs:
   build-and-deploy:
