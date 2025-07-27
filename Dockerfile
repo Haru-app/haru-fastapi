@@ -1,12 +1,16 @@
 FROM python:3.11-slim
 
 # 시스템 패키지 설치
-RUN apt-get update && apt-get install -y wget unzip libaio1 build-essential
+RUN apt-get update && \
+    apt-get install -y wget unzip libaio1 build-essential && \
+    rm -rf /var/lib/apt/lists/*
 
-# Oracle Instant Client 복사 및 설치
-COPY instantclient-basic-linux.x64-23.8.0.25.04.zip .
-RUN unzip instantclient-basic-linux.x64-23.8.0.25.04.zip -d /opt/oracle && \
-    ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient && \
+# Oracle Instant Client 다운로드 및 설치
+RUN mkdir -p /opt/oracle && \
+    wget https://download.oracle.com/otn_software/linux/instantclient/2380000/instantclient-basic-linux.x64-23.8.0.25.04.zip && \
+    unzip instantclient-basic-linux.x64-23.8.0.25.04.zip -d /opt/oracle && \
+    rm instantclient-basic-linux.x64-23.8.0.25.04.zip && \
+    ln -s /opt/oracle/instantclient_23_8 /opt/oracle/instantclient && \
     echo "/opt/oracle/instantclient" > /etc/ld.so.conf.d/oracle-instantclient.conf && \
     ldconfig
 
