@@ -1,9 +1,9 @@
 FROM python:3.11-slim
 
-# 시스템 패키지 설치 및 Oracle Instant Client 다운로드
 RUN apt-get update && apt-get install -y wget unzip libaio1 build-essential && \
     mkdir -p /opt/oracle && \
-    wget https://download.oracle.com/otn_software/linux/instantclient/instantclient-basiclite-linux.x64-21.1.0.0.0.zip && \
+    wget --header "Cookie: oraclelicense=accept-securebackup-cookie" \
+         https://download.oracle.com/otn_software/linux/instantclient/instantclient-basiclite-linux.x64-21.1.0.0.0.zip && \
     unzip instantclient-basiclite-linux.x64-21.1.0.0.0.zip -d /opt/oracle && \
     rm instantclient-basiclite-linux.x64-21.1.0.0.0.zip && \
     ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient && \
