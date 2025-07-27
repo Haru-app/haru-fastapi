@@ -7,7 +7,8 @@ import torch
 import time
 import redis
 
-from fastapi import FastAPI
+from typing import Optional
+from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from sentence_transformers import SentenceTransformer, util
 
@@ -73,19 +74,25 @@ def fetch_store_data():
     return store_data
 
 @app.get("/recommend")
-def recommend(emotion_input1: str, emotion_input2: str, weather_input: str):
+def recommend(    
+    emotion_input: Optional[str] = Query(None),
+    weather_input: Optional[str] = Query(None)):
+
+    if not emotion_input:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "emotion_input은 필수입니다"}
+        )
+    if not weather_input:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "weather_input은 필수입니다"}
+        )
+
     start_time = time.time()
 
     # DB fetch time: 약 1.2
     stores = fetch_store_data()
-
-    # 사용자 입력을 하나의 문장으로 합침 (감정 + 날씨)
-    # user_input = f"{emotion_input1} {emotion_input2} {weather_input}"
-    # 4. 사용자 입력 임베딩 소요 시각 약 0.07
-    #user_embedding = model.encode(user_input, convert_to_tensor=True)
-
-    emotion_input = f"{emotion_input1} {emotion_input2}"
-    weather_input = weather_input
 
     emotion_vec = model.encode(emotion_input, convert_to_tensor=True)
     weather_vec = model.encode(weather_input, convert_to_tensor=True)
