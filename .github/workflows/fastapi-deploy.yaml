@@ -32,7 +32,7 @@ jobs:
 
       - name: Run FastAPI server on VM
         run: |
-          gcloud compute ssh haru-server \
-            --zone=asia-northeast3-c \
-            --tunnel-through-iap \
-            --command="cd ~/haru-fastapi && chmod +x run.sh && ./run.sh"
+          gcloud compute ssh mapharu00@haru-server \
+          --zone=asia-northeast3-c \
+          --tunnel-through-iap \
+          --command="cd /home/mapharu00/haru-fastapi && chmod +x run.sh && ./run.sh"
