@@ -9,4 +9,3 @@ def save_similarity_to_redis(similarity_map,r):
     print("✅ Redis에 저장 완료!")
 
 
-##dfadsfa
