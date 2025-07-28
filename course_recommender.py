@@ -170,6 +170,7 @@ def recommend(
             'floor': store['floor'],
             'description': store['description'],
             'tags': store['tags'],
+            'image': store['image'],
             'score': score
         })
 
