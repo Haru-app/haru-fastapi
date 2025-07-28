@@ -52,11 +52,11 @@ def fetch_store_data():
                floor,
                description,
                hashtag,
-               image,
+               image
           FROM store
     """)
     store_data = []
-    for store_id, name, category, floor, desc, hashtag_str in cur:
+    for store_id, name, category, floor, desc, hashtag_str, image in cur:
         tags = [h.strip() for h in hashtag_str.split(",") if h.strip()]
         store_data.append({
             "store_id": store_id,
@@ -64,7 +64,8 @@ def fetch_store_data():
             "category": category,
             "floor": floor,
             "description": desc,
-            "tags": tags
+            "tags": tags,
+            "image": image
         })
     cur.close()
     conn.close()
