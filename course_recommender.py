@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-import cx_Oracle
+import oracledb  # ← 변경됨
 import torch
 import time
 import redis
@@ -13,42 +13,37 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from sentence_transformers import SentenceTransformer, util
 
-
 from saveToRedis import save_similarity_to_redis
 from queryEmotion import fetch_emotion_data, fetch_question_data
 from calculateSimilarity import calculate_similarity_map
 
-# 앱 시작 시 모델 로딩
 app = FastAPI()
 model = None
 r = None
+
 @app.on_event("startup")
 def load_model():
     global model
     global r
-    model = SentenceTransformer('jhgan/ko-sroberta-multitask')  # model time: 약 3.6
-        # Redis 설정
+    model = SentenceTransformer('jhgan/ko-sroberta-multitask')
     r = redis.Redis(host='34.64.210.133', port=6379, decode_responses=True)
 
-# 1. Oracle Instant Client 초기화
-lib_dir = os.path.join(os.path.dirname(__file__), os.getenv("INSTANT_CLIENT_DIR"))
-cx_Oracle.init_oracle_client(lib_dir=lib_dir)
-
-# 2. DB 연결 정보
+# DB 연결 정보
 ORACLE_USER = os.getenv("ORACLE_USER")
 ORACLE_PASSWORD = os.getenv("ORACLE_PASSWORD")
 ORACLE_HOST = os.getenv("ORACLE_HOST")
 ORACLE_PORT = os.getenv("ORACLE_PORT")
 ORACLE_SERVICE_NAME = os.getenv("ORACLE_SERVICE_NAME")
-DSN = cx_Oracle.makedsn(ORACLE_HOST, ORACLE_PORT, service_name=ORACLE_SERVICE_NAME)
+DSN = f"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={ORACLE_HOST})(PORT={ORACLE_PORT}))(CONNECT_DATA=(SERVICE_NAME={ORACLE_SERVICE_NAME})))"
 
 def getConn():
-    conn = cx_Oracle.connect(user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=DSN)
-    return conn
+    return oracledb.connect(user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=DSN)
+
+# ↓ 아래는 동일 (fetch_store_data, recommend, create_map 등)
 
 # 3. 매장 데이터 조회
 def fetch_store_data():
-    conn = cx_Oracle.connect(user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=DSN)
+    conn = getConn()
     cur = conn.cursor()
     cur.execute("""
         SELECT store_id,
