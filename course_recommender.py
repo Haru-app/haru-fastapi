@@ -51,7 +51,8 @@ def fetch_store_data():
                category,
                floor,
                description,
-               hashtag
+               hashtag,
+               image,
           FROM store
     """)
     store_data = []
