@@ -23,15 +23,15 @@ r = None
 
 # 감정 → 키워드 확장 매핑 딕셔너리
 EMOTION_TO_KEYWORDS = {
-    "설렘": ["기대", "변화", "새로운 경험", "감각적"],
-    "여유": ["편안함", "차분함", "따뜻함", "안정감"],
-    "활력": ["생동감", "밝음", "역동성", "자신감"],
-    "지침": ["휴식", "건강", "조용함", "안정감"],
-    "무기력": ["자극", "에너지", "밝은 분위기", "움직임"],
-    "외로움": ["따뜻함", "공감", "감성", "편안한 공간"],
-    "집중": ["조용함", "단순함", "집중도"],
-    "우울함": ["위로", "평온함", "따뜻함", "여유", "감성"]
+    "기쁨": ["기쁨", "행복", "즐거움", "즐거운", "유쾌함", "명품", "럭셔리", "만족감"], # 0.56
+    "여유": ["여유", "편안함", "안정감", "차분함", "휴식", "조용한 공간", "정갈한 맛", "건강한", "워치"], # 0.6
+    "설렘": ["설렘", "기대감", "새로운", "감각적", "로맨스", "로맨틱", "란제리", "특별한", "와인", "데이트", "고급스러움", "워치"], # 0.63
+    "호기심": ["호기심", "독특한", "이색적인", "창의적인", "체험", "전시", "컬처", "팝업", "개성"], # 0.73
+    "무기력": ["위로", "회복", "포근함", "따뜻함", "감성", "힐링", "자연", "정성", "감동", "건강한"], # 0.56
+    "스트레스": ["스트레스 해소", "자극", "분출", "강렬함", "활기참", "운동", "스포츠", "액티비티", "명품", "럭셔리", "매콤한 맛", "즐거움", "만족감"], # 0.54
+    "활기참": ["활기참", "생동감", "에너지", "활동적", "아웃도어", "운동", "스포츠", "액티비티", "러닝", "모험", "팝업", "영", "캐릭터", "기쁨", "독창성", "혁신"], # 0.61
 }
+
 
 # 날씨 → 키워드 확장 매핑 딕셔너리
 WEATHER_TO_KEYWORDS = {
@@ -93,10 +93,14 @@ def fetch_store_data():
     return store_data
 
 # 확장 감정 벡터 생성
+# def get_expanded_emotion_vector(emotion: str):
+#     keywords = EMOTION_TO_KEYWORDS.get(emotion, [emotion])  # 매핑 없으면 감정 단어 그대로
+#     keyword_vecs = model.encode(keywords, convert_to_tensor=True)
+#     return keyword_vecs.mean(dim=0)
 def get_expanded_emotion_vector(emotion: str):
-    keywords = EMOTION_TO_KEYWORDS.get(emotion, [emotion])  # 매핑 없으면 감정 단어 그대로
-    keyword_vecs = model.encode(keywords, convert_to_tensor=True)
-    return keyword_vecs.mean(dim=0)
+    keywords = EMOTION_TO_KEYWORDS.get(emotion, [emotion])
+    combined = " ".join(keywords)
+    return model.encode(combined, convert_to_tensor=True)
 
 # 확장 날짜 벡터 생성
 def get_expanded_weather_vector(weather: str):
