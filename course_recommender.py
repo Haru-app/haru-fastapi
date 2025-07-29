@@ -7,6 +7,7 @@ import torch
 import time
 import redis
 import random
+import torch.nn.functional as F
 
 from typing import Optional
 from fastapi import FastAPI, Query
@@ -23,22 +24,22 @@ r = None
 
 # 감정 → 키워드 확장 매핑 딕셔너리
 EMOTION_TO_KEYWORDS = {
-    "기쁨": ["기쁨", "행복", "즐거움", "즐거운", "유쾌함", "명품", "럭셔리", "만족감"], # 0.56
-    "여유": ["여유", "편안함", "안정감", "차분함", "휴식", "조용한 공간", "정갈한 맛", "건강한", "워치"], # 0.6
-    "설렘": ["설렘", "기대감", "새로운", "감각적", "로맨스", "로맨틱", "란제리", "특별한", "와인", "데이트", "고급스러움", "워치"], # 0.63
-    "호기심": ["호기심", "독특한", "이색적인", "창의적인", "체험", "전시", "컬처", "팝업", "개성"], # 0.73
-    "무기력": ["위로", "회복", "포근함", "따뜻함", "감성", "힐링", "자연", "정성", "감동", "건강한"], # 0.56
-    "스트레스": ["스트레스 해소", "자극", "분출", "강렬함", "활기참", "운동", "스포츠", "액티비티", "명품", "럭셔리", "매콤한 맛", "즐거움", "만족감"], # 0.54
-    "활기참": ["활기참", "생동감", "에너지", "활동적", "아웃도어", "운동", "스포츠", "액티비티", "러닝", "모험", "팝업", "영", "캐릭터", "기쁨", "독창성", "혁신"], # 0.61
+    "기쁨": ["기쁨", "행복", "즐거움", "즐거운", "유쾌함", "명품", "럭셔리", "만족감"], # 0.56 -> 0.62
+    "여유": ["여유", "편안함", "안정감", "차분함", "휴식", "조용한 공간", "정갈한 맛", "건강한", "워치"], # 0.6 -> 0.63
+    "설렘": ["설렘", "기대감", "새로운", "감각적", "로맨스", "로맨틱", "란제리", "특별한", "와인", "데이트", "고급스러움", "워치"], # 0.63 -> 0.75
+    "호기심": ["호기심", "독특한", "이색적인", "창의적인", "체험", "전시", "컬처", "팝업", "개성"], # 0.73 -> 0.75
+    "무기력": ["위로", "회복", "포근함", "따뜻함", "감성", "힐링", "자연", "정성", "감동", "건강한"], # 0.56 -> 0.57 (흐림은 0.58)
+    "스트레스": ["스트레스 해소", "자극", "분출", "강렬함", "활기참", "운동", "스포츠", "액티비티", "명품", "럭셔리", "매콤한 맛", "즐거움", "만족감"], # 0.54 -> 0.64 
+    "활기참": ["활기참", "생동감", "에너지", "활동적", "아웃도어", "운동", "스포츠", "액티비티", "러닝", "모험", "팝업", "영", "캐릭터", "기쁨", "독창성", "혁신"], # 0.61 -> 0.64
 }
 
 
 # 날씨 → 키워드 확장 매핑 딕셔너리
 WEATHER_TO_KEYWORDS = {
     "맑음": ["화사함", "야외활동", "기분 좋은", "밝은"],
-    "흐림": ["차분한", "잔잔한", "실내", "회색빛"],
-    "비": ["조용한", "실내 활동", "감성", "우산"],
-    "눈": ["포근한", "차분함", "겨울 느낌"]
+    "흐림": ["차분한", "잔잔한", "실내"],
+    "비": ["조용한", "실내", "감성"],
+    "눈": ["포근한", "겨울", "따뜻함"]
 }
 
 
@@ -93,10 +94,6 @@ def fetch_store_data():
     return store_data
 
 # 확장 감정 벡터 생성
-# def get_expanded_emotion_vector(emotion: str):
-#     keywords = EMOTION_TO_KEYWORDS.get(emotion, [emotion])  # 매핑 없으면 감정 단어 그대로
-#     keyword_vecs = model.encode(keywords, convert_to_tensor=True)
-#     return keyword_vecs.mean(dim=0)
 def get_expanded_emotion_vector(emotion: str):
     keywords = EMOTION_TO_KEYWORDS.get(emotion, [emotion])
     combined = " ".join(keywords)
@@ -107,6 +104,27 @@ def get_expanded_weather_vector(weather: str):
     keywords = WEATHER_TO_KEYWORDS.get(weather, [weather])
     vecs = model.encode(keywords, convert_to_tensor=True)
     return vecs.mean(dim=0)
+
+def compute_softmax_weighted_similarity(emotion_vec, store_embeddings):
+    scores = []
+    for tag_vecs in store_embeddings:
+        # 태그가 아예 없거나 임베딩된 게 없다면 유사도 0.0
+        if tag_vecs is None or len(tag_vecs) == 0:
+            scores.append(0.0)
+            continue
+
+        # cosine similarity: (1, D) vs (N_tags, D) → (1, N_tags)
+        sim = util.cos_sim(emotion_vec, tag_vecs)[0]  # shape: (N_tags,)
+
+        # softmax(weighted)
+        weight = 5.0
+        softmax_weights = F.softmax(sim * weight, dim=0)  # shape: (N_tags,)
+
+        # softmax-weighted average
+        weighted_score = torch.sum(softmax_weights * sim).item()  # scalar
+        scores.append(weighted_score)
+    
+    return scores  # List[float]
 
 @app.get("/recommend")
 def recommend(    
@@ -135,19 +153,47 @@ def recommend(
     weather_vec = get_expanded_weather_vector(weather_input)
     user_embedding = 0.8 * emotion_vec + 0.2 * weather_vec
 
-    # 3. 매장 임베딩 로드 or 계산
-    embedding_path = os.getenv("EMBEDDING_PATH", "store_embeddings.pt")
+    # 3-1. 매장 태그별 임베딩 로드 or 계산
+    embedding_path = os.getenv("EMBEDDING_PATH", "store_tag_embeddings.pt")
     if os.path.exists(embedding_path):
         store_embeddings = torch.load(embedding_path)
-        print("캐시된 store_embeddings 로드")
+        print("캐시된 store_tag_embeddings 로드 완료")
+    else:
+        store_embeddings = []
+        for store in stores:
+            tags = store["tags"]
+            # 태그가 없거나 공백만 있는 경우 빈 벡터 리스트로 저장
+            if not tags or all(t.strip() == "" for t in tags):
+                store_embeddings.append([])
+            else:
+                tag_vecs = model.encode(tags, convert_to_tensor=True)
+                store_embeddings.append(tag_vecs)
+        torch.save(store_embeddings, embedding_path)
+        print("store_tag_embeddings 계산 후 저장 완료")
+
+    # 3-2. 매장별 (전체 문장)/분위기 임베딩 로드 or 계산
+    embedding_path_sentence = os.getenv("EMBEDDING_PATH_SENTENCE", "store_sentence_embeddings.pt")
+    if os.path.exists(embedding_path_sentence):
+        store_sentence_embeddings = torch.load(embedding_path_sentence)
+        print("캐시된 store_sentence_embeddings 로드 완료")
     else:
         store_inputs = [" ".join(s["tags"]) for s in stores]
-        store_embeddings = model.encode(store_inputs, convert_to_tensor=True)
-        torch.save(store_embeddings, embedding_path)
-        print("store_embeddings 계산 후 저장")
+        store_sentence_embeddings = model.encode(store_inputs, convert_to_tensor=True)
+        torch.save(store_sentence_embeddings, embedding_path_sentence)
+        print("store_sentence_embeddings 계산 후 저장 완료")
+
 
     # 4. 유사도 계산
-    cosine_scores = util.cos_sim(user_embedding, store_embeddings)
+    # softmax-weighted cosine similarity 계산
+    similarity_scores = compute_softmax_weighted_similarity(emotion_vec, store_embeddings)
+    # 문장 임베딩 기반 cosine 유사도
+    sentence_similarities = util.cos_sim(user_embedding, store_sentence_embeddings)[0]  # shape: (N,)
+
+    # 0.7 * softmax 기반 점수 + 0.3 * 문장 기반 점수
+    final_scores = [
+    0.7 * softmax_score + 0.3 * sentence_score
+    for softmax_score, sentence_score in zip(similarity_scores, sentence_similarities)
+    ]
 
     # 5. 음식점/카페/비음식점 분리
     # 음식점 카테고리
@@ -160,19 +206,19 @@ def recommend(
     non_food_indices = [i for i in range(len(stores)) if i not in food_indices]
 
     # 6. 음식점 top3 중 랜덤 1개
-    food_scores = [(i, float(cosine_scores[0][i])) for i in food_indices]
+    food_scores = [(i, float(final_scores[i])) for i in food_indices]
     food_scores.sort(key=lambda x: x[1], reverse=True)
     top_food_candidates = food_scores[:3]
     top_food = [random.choice(top_food_candidates)] if top_food_candidates else []
 
     # 7. 카페 top3 중 랜덤 1개
-    cafe_scores = [(i, float(cosine_scores[0][i])) for i in cafe_indices]
+    cafe_scores = [(i, float(final_scores[i])) for i in cafe_indices]
     cafe_scores.sort(key=lambda x: x[1], reverse=True)
     top_cafe_candidates = cafe_scores[:3]
     top_cafe = [random.choice(top_cafe_candidates)] if top_cafe_candidates else []
 
     # 8. 비음식점 top15 중 랜덤 4개 (카테고리별 최대 2개)
-    non_food_scores = [(i, float(cosine_scores[0][i])) for i in non_food_indices]
+    non_food_scores = [(i, float(final_scores[i])) for i in non_food_indices]
     non_food_scores.sort(key=lambda x: x[1], reverse=True)
     top_non_food_candidates = non_food_scores[:15]
     random.shuffle(top_non_food_candidates)
@@ -213,7 +259,7 @@ def recommend(
         average_score = 0.0
 
     # 11. 최대 유사도 기준 평균 점수 (top 6개 전체 중)
-    all_scores = [float(score) for score in cosine_scores[0]]
+    all_scores = [float(score) for score in final_scores]
     top6_scores = sorted(all_scores, reverse=True)[:6]
     max_possible_score = sum(top6_scores) / 6 if top6_scores else 0.0
 
@@ -253,8 +299,6 @@ def recommend(
         "diversity_score": round(diversity_score, 4),
         "similarity_stddev": round(score_std, 4)
     })
-    # return JSONResponse(content={"stores": sorted_stores})
-
 
 @app.get("/question/similarity-map")
 def create_map():
@@ -272,4 +316,4 @@ def create_map():
     save_similarity_to_redis(similarity_map,r)
     
     conn.close()
-    return {"message": "✅ Redis 저장 완료"}
+    return {"message": "Redis 저장 완료"}
