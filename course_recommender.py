@@ -89,18 +89,18 @@ def recommend(
 
     start_time = time.time()
 
-    # DB fetch time: 약 1.2
+    # 1. DB에서 매장 데이터 조회
     stores = fetch_store_data()
 
+    # 2. 사용자 임베딩 생성 (감정 0.7 + 날씨 0.3)
     emotion_vec = model.encode(emotion_input, convert_to_tensor=True)
     weather_vec = model.encode(weather_input, convert_to_tensor=True)
-
     user_embedding = 0.7 * emotion_vec + 0.3 * weather_vec
 
-    # 5. 매장 임베딩 (일단 변경사항 없을 것이라고 예상)
+    # 3. 매장 임베딩 로드 or 계산
     embedding_path = os.getenv("EMBEDDING_PATH", "store_embeddings.pt")
     if os.path.exists(embedding_path):
-        store_embeddings = torch.load(embedding_path)  # load time: 약 0.001
+        store_embeddings = torch.load(embedding_path)
         print("캐시된 store_embeddings 로드")
     else:
         store_inputs = [" ".join(s["tags"]) for s in stores]
@@ -108,33 +108,32 @@ def recommend(
         torch.save(store_embeddings, embedding_path)
         print("store_embeddings 계산 후 저장")
 
-    # 6. 코사인 유사도 계산
+    # 4. 유사도 계산
     cosine_scores = util.cos_sim(user_embedding, store_embeddings)
 
+    # 5. 음식점/카페/비음식점 분리
     # 음식점 카테고리
     food_categories = ['푸드스트리트/델리파크', '22 푸드트럭 피아자', '전문식당가']
-
     # 카페/베이커리 카테고리
     cafe_categories = ['F&B', '카페 · 베이커리 · 디저트']
-
     # 음식점과 비음식점 인덱스 나누기
     food_indices = [i for i, s in enumerate(stores) if s['category'] in food_categories]
     cafe_indices = [i for i, s in enumerate(stores) if s['category'] in cafe_categories]
     non_food_indices = [i for i in range(len(stores)) if i not in food_indices]
 
-    # 음식점 중 유사도 Top 3 중 랜덤 1개
+    # 6. 음식점 top3 중 랜덤 1개
     food_scores = [(i, float(cosine_scores[0][i])) for i in food_indices]
     food_scores.sort(key=lambda x: x[1], reverse=True)
     top_food_candidates = food_scores[:3]
     top_food = [random.choice(top_food_candidates)] if top_food_candidates else []
 
-    # 카페/베이커리 중 유사도 Top 3 중 랜덤 1개
+    # 7. 카페 top3 중 랜덤 1개
     cafe_scores = [(i, float(cosine_scores[0][i])) for i in cafe_indices]
     cafe_scores.sort(key=lambda x: x[1], reverse=True)
     top_cafe_candidates = cafe_scores[:3]
     top_cafe = [random.choice(top_cafe_candidates)] if top_cafe_candidates else []
 
-    # 비음식점 유사도 Top 15 중 랜덤 4개 (카테고리당 최대 2개 제한)
+    # 8. 비음식점 top15 중 랜덤 4개 (카테고리별 최대 2개)
     non_food_scores = [(i, float(cosine_scores[0][i])) for i in non_food_indices]
     non_food_scores.sort(key=lambda x: x[1], reverse=True)
     top_non_food_candidates = non_food_scores[:15]
@@ -153,10 +152,8 @@ def recommend(
         if len(top_non_food) >= max_total:
             break
 
-    # 추천 인덱스 통합
+    # 9. 추천 매장 결과 리스트 생성
     top_indices = top_food + top_cafe + top_non_food 
-
-    # 7. 추천 결과 리스트 생성
     recommended_stores = []
     for idx, score in top_indices:
         store = stores[idx]
@@ -170,8 +167,28 @@ def recommend(
             'image': store['image'],
             'score': score
         })
+    
+    # 10. 최종 추천된 코스 유사도 평균 점수
+    if recommended_stores:
+        average_score = sum(s['score'] for s in recommended_stores) / len(recommended_stores)
+    else:
+        average_score = 0.0
 
-    # 층수 기준으로 정렬
+    # 11. 최대 유사도 기준 평균 점수 (top 6개 전체 중)
+    all_scores = [float(score) for score in cosine_scores[0]]
+    top6_scores = sorted(all_scores, reverse=True)[:6]
+    max_possible_score = sum(top6_scores) / 6 if top6_scores else 0.0
+
+    # 12. 최종 추천된 카테고리 다양성 점수 (최대 6개 카테고리)
+    category_set = set([s['category'] for s in recommended_stores])
+    diversity_score = len(category_set) / 6
+
+    # 13. 최종 추천된 코스 유사도 표준편차 (분산이 작을수록 고르게 유사)
+    import statistics
+    score_list = [s['score'] for s in recommended_stores]
+    score_std = statistics.stdev(score_list) if len(score_list) > 1 else 0.0
+
+    # 14. 최종 결과 리스트 층수 기준으로 정렬
     def parse_floor(floor_str):
         if '지하' in floor_str:
             num = ''.join(filter(str.isdigit, floor_str))
@@ -182,7 +199,7 @@ def recommend(
 
     sorted_stores = sorted(recommended_stores, key=lambda x: parse_floor(x['floor']))
 
-    # 8. 정렬된 결과 출력
+    # 디버깅 로그 출력
     print("추천 매장 (층순 정렬):")
     for store in sorted_stores:
         print(f"매장ID: {store['store_id']}, 매장명: {store['name']}, 카테고리: {store['category']}, 층: {store['floor']}, 설명: {store['description']}, 해시태그: {store['tags']}, 유사도: {store['score']:.4f}")
@@ -190,7 +207,15 @@ def recommend(
     end_time = time.time()
     print(f"걸린 시간: {end_time - start_time:.2f}초")
 
-    return JSONResponse(content={"stores": sorted_stores})
+    # 15. 최종 응답
+    return JSONResponse(content={
+        "stores": sorted_stores,
+        "average_score": round(average_score, 4),
+        "max_possible_score": round(max_possible_score, 4),
+        "diversity_score": round(diversity_score, 4),
+        "similarity_stddev": round(score_std, 4)
+    })
+    # return JSONResponse(content={"stores": sorted_stores})
 
 
 @app.get("/question/similarity-map")
