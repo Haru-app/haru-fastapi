@@ -21,6 +21,27 @@ app = FastAPI()
 model = None
 r = None
 
+# 감정 → 키워드 확장 매핑 딕셔너리
+EMOTION_TO_KEYWORDS = {
+    "설렘": ["기대", "변화", "새로운 경험", "감각적"],
+    "여유": ["편안함", "차분함", "따뜻함", "안정감"],
+    "활력": ["생동감", "밝음", "역동성", "자신감"],
+    "지침": ["휴식", "건강", "조용함", "안정감"],
+    "무기력": ["자극", "에너지", "밝은 분위기", "움직임"],
+    "외로움": ["따뜻함", "공감", "감성", "편안한 공간"],
+    "집중": ["조용함", "단순함", "집중도"],
+    "우울함": ["위로", "평온함", "따뜻함", "여유", "감성"]
+}
+
+# 날씨 → 키워드 확장 매핑 딕셔너리
+WEATHER_TO_KEYWORDS = {
+    "맑음": ["화사함", "야외활동", "기분 좋은", "밝은"],
+    "흐림": ["차분한", "잔잔한", "실내", "회색빛"],
+    "비": ["조용한", "실내 활동", "감성", "우산"],
+    "눈": ["포근한", "차분함", "겨울 느낌"]
+}
+
+
 @app.on_event("startup")
 def load_model():
     global model
@@ -41,7 +62,7 @@ def getConn():
 
 # ↓ 아래는 동일 (fetch_store_data, recommend, create_map 등)
 
-# 3. 매장 데이터 조회
+# 매장 데이터 조회
 def fetch_store_data():
     conn = getConn()
     cur = conn.cursor()
@@ -71,6 +92,18 @@ def fetch_store_data():
     conn.close()
     return store_data
 
+# 확장 감정 벡터 생성
+def get_expanded_emotion_vector(emotion: str):
+    keywords = EMOTION_TO_KEYWORDS.get(emotion, [emotion])  # 매핑 없으면 감정 단어 그대로
+    keyword_vecs = model.encode(keywords, convert_to_tensor=True)
+    return keyword_vecs.mean(dim=0)
+
+# 확장 날짜 벡터 생성
+def get_expanded_weather_vector(weather: str):
+    keywords = WEATHER_TO_KEYWORDS.get(weather, [weather])
+    vecs = model.encode(keywords, convert_to_tensor=True)
+    return vecs.mean(dim=0)
+
 @app.get("/recommend")
 def recommend(    
     emotion_input: Optional[str] = Query(None),
@@ -92,10 +125,11 @@ def recommend(
     # 1. DB에서 매장 데이터 조회
     stores = fetch_store_data()
 
-    # 2. 사용자 임베딩 생성 (감정 0.7 + 날씨 0.3)
-    emotion_vec = model.encode(emotion_input, convert_to_tensor=True)
-    weather_vec = model.encode(weather_input, convert_to_tensor=True)
-    user_embedding = 0.7 * emotion_vec + 0.3 * weather_vec
+    # 2. 사용자 임베딩 생성 (감정 0.8 + 날씨 0.2)
+    # 확장 감정 벡터 사용
+    emotion_vec = get_expanded_emotion_vector(emotion_input)
+    weather_vec = get_expanded_weather_vector(weather_input)
+    user_embedding = 0.8 * emotion_vec + 0.2 * weather_vec
 
     # 3. 매장 임베딩 로드 or 계산
     embedding_path = os.getenv("EMBEDDING_PATH", "store_embeddings.pt")
