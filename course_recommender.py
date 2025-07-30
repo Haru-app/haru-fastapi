@@ -105,6 +105,15 @@ def get_expanded_weather_vector(weather: str):
     vecs = model.encode(keywords, convert_to_tensor=True)
     return vecs.mean(dim=0)
 
+# 극단 온도에만 미세 보정
+def get_temperature_adjustment_vector(temp: float):
+    if temp <= 0:
+        return model.encode("추위 실내 따뜻함", convert_to_tensor=True)
+    elif temp >= 30:
+        return model.encode("냉방 실내 피서", convert_to_tensor=True)
+    else:
+        return None
+
 def compute_softmax_weighted_similarity(emotion_vec, store_embeddings):
     scores = []
     for tag_vecs in store_embeddings:
@@ -142,6 +151,15 @@ def recommend(
             content={"error": "weather_input은 필수입니다"}
         )
 
+    try:
+        weather_input, temperature = weather_input.split(",")
+        temperature = float(temperature)
+    except ValueError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "weather_input 형식이 잘못되었습니다. 예: '맑음,29'"}
+        )
+
     start_time = time.time()
 
     # 1. DB에서 매장 데이터 조회
@@ -151,7 +169,12 @@ def recommend(
     # 확장 감정 벡터 사용
     emotion_vec = get_expanded_emotion_vector(emotion_input)
     weather_vec = get_expanded_weather_vector(weather_input)
-    user_embedding = 0.8 * emotion_vec + 0.2 * weather_vec
+    temperature_vec = get_temperature_adjustment_vector(temperature)
+
+    if temperature_vec is not None:
+        user_embedding = 0.7 * emotion_vec + 0.2 * weather_vec + 0.1 * temperature_vec
+    else:
+        user_embedding = 0.8 * emotion_vec + 0.2 * weather_vec
 
     # 3-1. 매장 태그별 임베딩 로드 or 계산
     embedding_path = os.getenv("EMBEDDING_PATH", "store_tag_embeddings.pt")
