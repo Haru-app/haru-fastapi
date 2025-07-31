@@ -4,16 +4,16 @@ def fetch_emotion_data(conn):
     cur.execute("""
         SELECT EMOTION_ID,
                EMOTION_NAME,
-               DESCRIPTION
+               EMBEDDING_TEXT
           FROM EMOTION
     """)
 
     emotion_data = []
     emotions = []
 
-    for EMOTION_ID,EMOTION_NAME, DESCRIPTION in cur:
-        print(EMOTION_NAME,DESCRIPTION)
-        emotion_data.append(EMOTION_NAME + " : " + DESCRIPTION)
+    for EMOTION_ID,EMOTION_NAME, EMBEDDING_TEXT in cur:
+        print(EMOTION_NAME,EMBEDDING_TEXT)
+        emotion_data.append(EMOTION_NAME + " : " + EMBEDDING_TEXT)
         emotions.append(EMOTION_NAME)
 
     cur.close()
